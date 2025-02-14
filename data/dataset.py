@@ -19,7 +19,7 @@ class MammographyDataset(Dataset):
 		# retrieves a batch of (4) items
 		img_list = []
 		for ip in self.data[self.data["case_id"] == case_id]["image_id"]:
-			x = Image.open(os.path.join(self.img_dir, ip))
+			x = Image.open(os.path.join(self.img_dir, f'{case_id}/{ip}'))
 	
 			if self.transform:
 				x = self.transform(x)
