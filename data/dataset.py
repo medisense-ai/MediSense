@@ -19,8 +19,6 @@ class MammographyDataset(Dataset):
 
 	def __getitem__(self, idx):
 		row = self.data[(self.data["case_id"] == idx) & (self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)]
-		print(idx)
-		print(row)
 		label = row["category"].values[0]
 		img_file = f'{row["image_id"].values[0]}.jpg'
 		img_path = os.path.join(self.img_dir, img_file)
