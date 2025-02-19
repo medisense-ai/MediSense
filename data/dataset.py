@@ -6,37 +6,30 @@ import os
 
 class MammographyDataset(Dataset):
 
-	def __init__(self, csv_file, csv_image_col, img_dir, transform=None):
+	def __init__(self, csv_file, img_dir, laterality, view, transform=None):
 		self.data = pd.read_csv(csv_file)
-		self.data_image_col = csv_image_col
 		self.img_dir = img_dir
+		self.laterality = laterality
+		self.view = view
 		self.transform = transform
 
 	def __len__(self):
-		return len(self.data)
-
-	def __getitem__(self, case_id):
-		# retrieves a batch of (4) items
-		img_list = []
-		for ip in self.data[self.data["case_id"] == case_id]["image_id"]:
-			x = Image.open(os.path.join(self.img_dir, f'{case_id}/{ip}'))
-	
-			if self.transform:
-				x = self.transform(x)
-
-			img_list.append(x)
-        
-		return img_list
+		return len(self.data[(self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)])
 	
 
-	def get_image(self, idx):
-		img_path = os.path.join(self.img_dir, self.data[self.data_image_col].iloc[idx])
+	def __getitem__(self, idx):
+		row = self.data[(self.data["case_id"] == idx) & (self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)]
+		print(idx)
+		print(row)
+		label = row["category"].values[0]
+		img_file = f'{row["image_id"].values[0]}.jpg'
+		img_path = os.path.join(self.img_dir, img_file)
 		image = Image.open(img_path).convert("RGB")
         
 		if self.transform:
 			image = self.transform(image)
         
-		return image
+		return image, label
 
 # Example usage
 if __name__ == "__main__":
