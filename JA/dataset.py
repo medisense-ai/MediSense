@@ -88,11 +88,15 @@ class MammographyLocalizationDataset(Dataset):
         return len(self.image_ids)
     
     def __getitem__(self, idx):
+        # Identify the row(s) corresponding to this image_id
         image_id = self.image_ids[idx]
         rows = self.data[self.data['image_id'] == image_id]
         
-        img_file = f'{image_id}.jpg'
-        img_path = os.path.join(self.img_dir, img_file)
+        # We assume 'case_id' matches the subfolder name (0, 1, 2, etc.)
+        folder = rows['case_id'].values[0]  # Make sure your CSV has this column
+        img_file = f"{image_id}.jpg"
+        img_path = os.path.join(self.img_dir, str(folder), img_file)
+
         image = np.array(Image.open(img_path).convert("RGB"))
         
         crop_offset_x, crop_offset_y = 0, 0
@@ -129,13 +133,14 @@ class MammographyLocalizationDataset(Dataset):
 
 # Example usage:
 if __name__ == "__main__":
+    # Example: reading from data/train/ with subfolders for each case_id
     transform = get_transform(train=True)
     
     dataset = MammographyLocalizationDataset(
-        csv_file='data/localization.csv',
-        img_dir='data/images',
+        csv_file='data/train/localization.csv',
+        img_dir='data/train/images',
         laterality='L',   # Example: left breast
-        view='CC',       # Example: craniocaudal view
+        view='CC',        # Example: craniocaudal view
         transform=transform,
         auto_crop_enabled=True
     )
@@ -147,7 +152,7 @@ if __name__ == "__main__":
     for sample in dataloader:
         for image, boxes, labels, detection_flag in sample:
             print("Image shape:", image.shape)       # Expected: (3, 224, 224)
-            print("Boxes:", boxes)                     # Tensor of shape (N, 4) or (0, 4) if no lesion
-            print("Labels:", labels)                   # List of label strings
-            print("Detection flag:", detection_flag)   # 1 if lesion is present, 0 if not
+            print("Boxes:", boxes)                   # Tensor of shape (N, 4) or (0, 4)
+            print("Labels:", labels)                 # List of label strings
+            print("Detection flag:", detection_flag) # 1 if lesion is present, 0 if not
         break
