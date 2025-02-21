@@ -82,20 +82,9 @@ class MammographyDetectionModel(nn.Module):
         Trains the detection/localization model using the MammographyLocalizationDataset.
         Optionally uses a validation set for early stopping and logging.
         
-        Parameters:
-          train_csv_file: Path to the CSV file with training annotations.
-          train_img_dir: Directory with training x-ray images.
-          val_csv_file: (Optional) Path to the CSV file with validation annotations.
-          val_img_dir: (Optional) Directory with validation x-ray images.
-          laterality, view: Filter criteria for the dataset.
-          num_epochs: Number of training epochs.
-          learning_rate: Learning rate for the optimizer.
-          weight_decay: Weight decay (L2 regularization) for Adam.
-          detection_loss_weight: Weighting factor for the detection loss.
-          bbox_loss_weight: Weighting factor for the bounding box regression loss.
-          batch_size: Batch size to use during training.
-          patience: Number of epochs with no improvement in validation loss before early stopping.
-          device: Device to run training on (CPU or GPU).
+        Updated to reflect the new data structure:
+          train_csv_file, train_img_dir => e.g. data/train/localization.csv, data/train/images
+          val_csv_file, val_img_dir     => e.g. data/subset_train_eval/localization.csv, data/subset_train_eval/images
         """
         self.to(device)
         # Albumentations pipelines for training and validation
@@ -197,21 +186,20 @@ class MammographyDetectionModel(nn.Module):
         print("Training complete.")
 
 if __name__ == "__main__":
-    # Instantiate the detection/localization model
+    # Example usage with data/train/ for training and data/subset_train_eval/ for validation
     model = MammographyDetectionModel(pretrained=True)
-    # Train the model using training and (optional) validation data
     model.train_model(
-        train_csv_file="data/train_localization.csv",  # Path to your training CSV
-        train_img_dir="data/train_images",             # Directory with training images
-        val_csv_file="data/val_localization.csv",      # Path to your validation CSV (optional)
-        val_img_dir="data/val_images",                 # Directory with validation images (optional)
+        train_csv_file="data/train/localization.csv",  # e.g. data/train/localization.csv
+        train_img_dir="data/train/images",             # e.g. data/train/images
+        val_csv_file="data/subset_train_eval/localization.csv",      # optional
+        val_img_dir="data/subset_train_eval/images",                 # optional
         laterality="R",                                # Example: right breast
-        view="MLO",                                    # Example: mediolateral oblique view
-        num_epochs=20,                                 # Total number of epochs
+        view="MLO",                                    # Example: mediolateral oblique
+        num_epochs=20,
         learning_rate=0.001,
-        weight_decay=1e-5,                             # L2 regularization strength
+        weight_decay=1e-5,
         detection_loss_weight=1.0,
         bbox_loss_weight=1.0,
         batch_size=1,
-        patience=5                                      # Early stopping patience
+        patience=5
     )
