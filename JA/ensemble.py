@@ -144,10 +144,10 @@ def train_ensemble():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Paths for training and validation
-    train_csv = "data/train/localization.csv"
-    train_img_dir = "data/train/images"
-    val_csv = "data/subset_train_eval/localization.csv"
-    val_img_dir = "data/subset_train_eval/images"
+    train_csv = "/home/team11/data/train/localization.csv"
+    train_img_dir = "/home/team11/data/train/images"
+    val_csv = "/home/team11/data/subset_train_eval/localization.csv"
+    val_img_dir = "/home/team11/data/subset_train_eval/images"
 
     # Train individual models
     model_L_MLO, acc_L_MLO = train_single_model("L", "MLO", train_csv, train_img_dir, val_csv, val_img_dir, device=device)
