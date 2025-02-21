@@ -157,8 +157,8 @@ class MammographyLocalizationDataset(Dataset):
 # Example usage:
 if __name__ == "__main__":
     dataset = MammographyLocalizationDataset(
-        csv_file='/home/ja/new_env/AI4Health/testing/train/localization.csv',
-        img_dir='/home/ja/new_env/AI4Health/testing/train/images',
+        csv_file='/home/data/train/localization.csv',
+        img_dir='/home/data/train/images',
         laterality='R',
         view='MLO',
         train=True  # True => apply random rotation, no flipping
