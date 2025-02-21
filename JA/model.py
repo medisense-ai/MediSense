@@ -189,10 +189,10 @@ if __name__ == "__main__":
     # Example usage with data/train/ for training and data/subset_train_eval/ for validation
     model = MammographyDetectionModel(pretrained=True)
     model.train_model(
-        train_csv_file="data/train/localization.csv",  # e.g. data/train/localization.csv
-        train_img_dir="data/train/images",             # e.g. data/train/images
-        val_csv_file="data/subset_train_eval/localization.csv",      # optional
-        val_img_dir="data/subset_train_eval/images",                 # optional
+        train_csv_file="/home/team11/data/train/localization.csv",  # e.g. data/train/localization.csv
+        train_img_dir="/home/team11/data/train/images",             # e.g. data/train/images
+        val_csv_file="/home/team11/data/subset_train_eval/localization.csv",      # optional
+        val_img_dir="/home/team11/data/subset_train_eval/images",                 # optional
         laterality="R",                                # Example: right breast
         view="MLO",                                    # Example: mediolateral oblique
         num_epochs=20,
