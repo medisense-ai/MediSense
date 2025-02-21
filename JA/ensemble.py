@@ -146,8 +146,8 @@ def train_ensemble():
     # Paths for training and validation
     train_csv = "/home/ja/new_env/AI4Health/testing/train/localization.csv"
     train_img_dir = "/home/ja/new_env/AI4Health/testing/train/images"
-    val_csv = "/home/ja/new_env/AI4Health/testing/subset-train-eval/localization.csv"
-    val_img_dir = "/home/ja/new_env/AI4Health/testing/subset-train-eval/images"
+    val_csv = "/home/data/subset-train-eval/localization.csv"
+    val_img_dir = "/home/data/subset-train-eval/images"
 
     # Train individual models
     model_L_MLO, acc_L_MLO = train_single_model("L", "MLO", train_csv, train_img_dir, val_csv, val_img_dir, device=device)
