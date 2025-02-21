@@ -107,8 +107,8 @@ def train_ensemble():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Train + Val data paths
-    train_csv = "/home/ja/new_env/AI4Health/testing/train/localization.csv"
-    train_img_dir = "/home/ja/new_env/AI4Health/testing/train/images"
+    train_csv ="/home/data/train/localization.csv"
+    train_img_dir="/home/data/train/images" 
     val_csv = "/home/data/subset-train-eval/localization.csv"
     val_img_dir = "/home/data/subset-train-eval/images"
 
