@@ -137,8 +137,8 @@ if __name__ == "__main__":
     transform = get_transform(train=True)
     
     dataset = MammographyLocalizationDataset(
-        csv_file='data/train/localization.csv',
-        img_dir='data/train/images',
+        csv_file='/home/team11/data/train/localization.csv',
+        img_dir='/home/team11/data/train/images',
         laterality='L',   # Example: left breast
         view='CC',        # Example: craniocaudal view
         transform=transform,
