@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 
-# Import the modified localization dataset and transformation pipeline from dataset.py
-from dataset import MammographyLocalizationDataset, get_transform
+# Import the simpler dataset class
+from dataset import MammographyLocalizationDataset
 
 class MammographyDetectionModel(nn.Module):
     def __init__(self, pretrained=True):
@@ -26,7 +26,7 @@ class MammographyDetectionModel(nn.Module):
         features = self.backbone(x)
         # Detection branch: predict lesion presence
         detect = self.fc_detect(features)
-        detect = torch.sigmoid(detect)  # Output probability between 0 and 1
+        detect = torch.sigmoid(detect)  # Output probability in [0,1]
         # Regression branch: predict bounding box coordinates
         bbox = self.fc_bbox(features)
         return detect, bbox
@@ -40,6 +40,7 @@ class MammographyDetectionModel(nn.Module):
         running_val_loss = 0.0
         with torch.no_grad():
             for batch in dataloader:
+                # Each batch is a list of size 'batch_size'; we handle the first sample
                 image, boxes, labels, detection_flag = batch[0]
                 image = image.unsqueeze(0).to(device)
                 detection_target = torch.tensor([detection_flag], dtype=torch.float32).to(device)
@@ -72,42 +73,38 @@ class MammographyDetectionModel(nn.Module):
                     view="MLO", 
                     num_epochs=20, 
                     learning_rate=0.001,
-                    weight_decay=1e-5,     # L2 regularization strength
+                    weight_decay=1e-5,
                     detection_loss_weight=1.0,
                     bbox_loss_weight=1.0,
                     batch_size=1,
                     patience=5,
                     device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         """
-        Trains the detection/localization model using the MammographyLocalizationDataset.
+        Trains the detection/localization model using MammographyLocalizationDataset.
         Optionally uses a validation set for early stopping and logging.
-        
-        Updated to reflect the new data structure:
-          train_csv_file, train_img_dir => e.g. data/train/localization.csv, data/train/images
-          val_csv_file, val_img_dir     => e.g. data/subset_train_eval/localization.csv, data/subset_train_eval/images
+
+        We rely on the dataset for random rotation + resizing. No horizontal flips or background removal.
         """
         self.to(device)
-        # Albumentations pipelines for training and validation
-        train_transform = get_transform(train=True)
+
+        # Create training dataset (train=True => random small rotations)
         train_dataset = MammographyLocalizationDataset(
             csv_file=train_csv_file,
             img_dir=train_img_dir,
             laterality=laterality,
             view=view,
-            transform=train_transform,
-            auto_crop_enabled=True
+            train=True  # enable random rotation
         )
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda x: x)
 
+        # Create validation dataset if provided (train=False => no random rotation)
         if val_csv_file and val_img_dir:
-            val_transform = get_transform(train=False)
             val_dataset = MammographyLocalizationDataset(
                 csv_file=val_csv_file,
                 img_dir=val_img_dir,
                 laterality=laterality,
                 view=view,
-                transform=val_transform,
-                auto_crop_enabled=True
+                train=False  # no rotation
             )
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x)
         else:
@@ -117,7 +114,7 @@ class MammographyDetectionModel(nn.Module):
         criterion_detection = nn.BCELoss()
         criterion_bbox = nn.SmoothL1Loss()
 
-        # Adam optimizer with weight decay for L2 regularization
+        # Adam optimizer with L2 regularization
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         best_val_loss = np.inf
@@ -158,12 +155,11 @@ class MammographyDetectionModel(nn.Module):
             avg_train_loss = running_loss / len(train_dataloader)
             log_msg = f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {avg_train_loss:.4f}"
 
-            # Validation, if available
+            # Validation (if available)
             if val_dataloader:
                 avg_val_loss = self.evaluate(val_dataloader, criterion_detection, criterion_bbox, device)
                 log_msg += f", Val Loss: {avg_val_loss:.4f}"
 
-                # Early Stopping Logic
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
                     epochs_no_improve = 0
@@ -173,28 +169,27 @@ class MammographyDetectionModel(nn.Module):
                     if epochs_no_improve >= patience:
                         print(log_msg)
                         print("Early stopping triggered.")
-                        # Load the best model weights before exiting
                         if best_model_wts is not None:
                             self.load_state_dict(best_model_wts)
                         return
 
             print(log_msg)
 
-        # If training completes without early stopping, optionally load best weights
+        # If no early stop triggered, optionally load best weights
         if best_model_wts is not None:
             self.load_state_dict(best_model_wts)
         print("Training complete.")
 
 if __name__ == "__main__":
-    # Example usage with data/train/ for training and data/subset_train_eval/ for validation
+    # Example usage
     model = MammographyDetectionModel(pretrained=True)
     model.train_model(
         train_csv_file="/home/data/train/localization.csv",  
         train_img_dir="/home/data/train/images",             
         val_csv_file="/home/data/subset-train-eval/localization.csv",     
-        val_img_dir="/home/data/subset-train-eval/images",             # optional
-        laterality="R",                                # Example: right breast
-        view="MLO",                                    # Example: mediolateral oblique
+        val_img_dir="/home/data/subset-train-eval/images",  
+        laterality="R",
+        view="MLO",
         num_epochs=20,
         learning_rate=0.001,
         weight_decay=1e-5,
