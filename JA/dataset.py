@@ -33,19 +33,18 @@ def auto_crop(image, threshold=10, margin=20):
         # If the entire image is black, return the original image with zero offsets
         return image, 0, 0
 
-def get_transform(train):
+def get_transform(train=True):
     if train:
         return A.Compose(
             [
-                # Apply small rotation, translation, and scaling
                 A.ShiftScaleRotate(
-                    shift_limit=0.0625,   # Shift up to ~6% of the image dimensions
+                    shift_limit=0.0625,   # Shift up to ~6% of image dimensions
                     scale_limit=0.1,      # Scale up to 10%
                     rotate_limit=10,      # Rotate up to 10 degrees
                     p=0.5,
-                    border_mode=0         # Use constant (black) border filling
+                    border_mode=cv2.BORDER_CONSTANT,  # or 0
+                    value=(0, 0, 0)                   # Fill with black if needed
                 ),
-                # Randomly crop a resized region
                 A.RandomResizedCrop(
                     height=224,
                     width=224,
@@ -53,18 +52,20 @@ def get_transform(train):
                     ratio=(0.9, 1.1),
                     p=0.5
                 ),
-                # Convert the image to a PyTorch tensor
+                # Convert to a PyTorch tensor (float32)
+                A.ToFloat(max_value=255.0, always_apply=True),
                 ToTensorV2()
             ],
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'])
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], min_visibility=0.0, check_each_transform=False)
         )
     else:
         return A.Compose(
             [
                 A.Resize(224, 224),
+                A.ToFloat(max_value=255.0, always_apply=True),
                 ToTensorV2()
             ],
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'])
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], min_visibility=0.0, check_each_transform=False)
         )
 
 class MammographyLocalizationDataset(Dataset):
@@ -137,8 +138,8 @@ if __name__ == "__main__":
     transform = get_transform(train=True)
     
     dataset = MammographyLocalizationDataset(
-        csv_file='/home/team11/data/train/localization.csv',
-        img_dir='/home/team11/data/train/images',
+        csv_file='/home/data/train/localization.csv',
+        img_dir='/home/data/train/images',
         laterality='L',   # Example: left breast
         view='CC',        # Example: craniocaudal view
         transform=transform,
