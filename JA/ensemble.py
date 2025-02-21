@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-# Replace these imports with your updated detection model and dataset for localization:
+# Updated detection model and dataset references
 from model import MammographyDetectionModel
 from dataset import get_transform, MammographyLocalizationDataset
 
@@ -66,7 +66,6 @@ def evaluate_detection_accuracy(model, csv_file, img_dir, laterality, view, devi
     Returns:
       detection_accuracy (float): ratio of correct predictions over total images.
     """
-    # Build a validation dataset/dataloader
     val_transform = get_transform(train=False)
     val_dataset = MammographyLocalizationDataset(
         csv_file=csv_file,
@@ -109,6 +108,7 @@ def train_single_model(laterality, view, train_csv, train_img_dir, val_csv, val_
     Returns the trained model plus its detection accuracy on the validation set.
     """
     model = MammographyDetectionModel(pretrained=True)
+    # Adjust as needed; reference new directories:
     model.train_model(
         train_csv_file=train_csv,
         train_img_dir=train_img_dir,
@@ -116,7 +116,7 @@ def train_single_model(laterality, view, train_csv, train_img_dir, val_csv, val_
         val_img_dir=val_img_dir,
         laterality=laterality,
         view=view,
-        num_epochs=10,              # Adjust as needed
+        num_epochs=10,
         learning_rate=0.001,
         weight_decay=1e-5,
         detection_loss_weight=1.0,
@@ -136,14 +136,18 @@ def train_ensemble():
     Trains four separate detection/localization models (L_MLO, L_CC, R_MLO, R_CC),
     computes their validation detection accuracies, normalizes these into weights,
     and creates a weighted ensemble model.
+
+    Data structure:
+      - train set:    data/train/localization.csv, data/train/images/[case_id]/image_name.jpg
+      - subset eval:  data/subset_train_eval/localization.csv, data/subset_train_eval/images/[case_id]/image_name.jpg
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Specify training and validation data
-    train_csv = "data/train_localization.csv"
-    train_img_dir = "data/train_images"
-    val_csv = "data/val_localization.csv"
-    val_img_dir = "data/val_images"
+    # Paths for training and validation
+    train_csv = "data/train/localization.csv"
+    train_img_dir = "data/train/images"
+    val_csv = "data/subset_train_eval/localization.csv"
+    val_img_dir = "data/subset_train_eval/images"
 
     # Train individual models
     model_L_MLO, acc_L_MLO = train_single_model("L", "MLO", train_csv, train_img_dir, val_csv, val_img_dir, device=device)
@@ -172,7 +176,7 @@ def train_ensemble():
     # For simplicity, we'll use the same weights for bounding box outputs
     bbox_weights = detection_weights
 
-    # Reload each model (optional if we want a fresh start for the ensemble)
+    # Reload each model (optional) so the ensemble can start fresh
     model_L_MLO.load_state_dict(torch.load("model_L_MLO.pth"))
     model_L_CC.load_state_dict(torch.load("model_L_CC.pth"))
     model_R_MLO.load_state_dict(torch.load("model_R_MLO.pth"))
