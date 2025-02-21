@@ -33,39 +33,38 @@ def auto_crop(image, threshold=10, margin=20):
         # If the entire image is black, return the original image with zero offsets
         return image, 0, 0
 
-def get_transform(train=True):
+def get_transform(train):
     if train:
         return A.Compose(
             [
+                # Use cv2 constants for border/interpolation
                 A.ShiftScaleRotate(
-                    shift_limit=0.0625,   # Shift up to ~6% of image dimensions
-                    scale_limit=0.1,      # Scale up to 10%
-                    rotate_limit=10,      # Rotate up to 10 degrees
-                    p=0.5,
-                    border_mode=cv2.BORDER_CONSTANT,  # or 0
-                    value=(0, 0, 0)                   # Fill with black if needed
-                ),
-                A.RandomResizedCrop(
-                    height=224,
-                    width=224,
-                    scale=(0.8, 1.0),
-                    ratio=(0.9, 1.1),
+                    shift_limit=0.0625,
+                    scale_limit=0.1,
+                    rotate_limit=10,
+                    interpolation=cv2.INTER_LINEAR,
+                    border_mode=cv2.BORDER_CONSTANT,  # replaces 'border_mode=0'
                     p=0.5
                 ),
-                # Convert to a PyTorch tensor (float32)
-                A.ToFloat(max_value=255.0, always_apply=True),
+                A.RandomResizedCrop(
+                    size=(224, 224),
+                    scale=(0.8, 1.0),
+                    ratio=(0.9, 1.1),
+                    interpolation=cv2.INTER_LINEAR,
+                    mask_interpolation=cv2.INTER_NEAREST,
+                    p=0.5
+                ),
                 ToTensorV2()
             ],
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], min_visibility=0.0, check_each_transform=False)
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'])
         )
     else:
         return A.Compose(
             [
-                A.Resize(224, 224),
-                A.ToFloat(max_value=255.0, always_apply=True),
+                A.Resize(224, 224, interpolation=cv2.INTER_LINEAR),
                 ToTensorV2()
             ],
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], min_visibility=0.0, check_each_transform=False)
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'])
         )
 
 class MammographyLocalizationDataset(Dataset):
@@ -138,8 +137,8 @@ if __name__ == "__main__":
     transform = get_transform(train=True)
     
     dataset = MammographyLocalizationDataset(
-        csv_file='/home/data/train/localization.csv',
-        img_dir='/home/data/train/images',
+        csv_file='/home/ja/new_env/AI4Health/testing/train/localization.csv',
+        img_dir='/home/ja/new_env/AI4Health/testing/train/images',
         laterality='L',   # Example: left breast
         view='CC',        # Example: craniocaudal view
         transform=transform,
