@@ -1,7 +1,7 @@
 import torch
 from torchvision import models, transforms
 from torch.utils.data import DataLoader
-from common.dataset import MammographyDataset
+from common.local.dataset import MammographyDataset
 from model import MammographyModel
 
 import torch.nn as nn

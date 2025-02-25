@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
 
-from common.dataset import MammographyDataset
+from common.local.dataset import MammographyDataset
 
 
 class MammographyModel(nn.Module):

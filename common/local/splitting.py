@@ -2,13 +2,15 @@ import os
 import shutil
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from common.local.logger import Logger
 
 def split_by_case(
     csv_path: str,
     output_train_csv: str = "/home/team11/dev/MediSense/classification/temp/train_labels.csv",
     output_val_csv: str = "/home/team11/dev/MediSense/classification/temp/val_labels.csv",
     test_size: float = 0.2,
-    random_state: int = 42
+    random_state: int = 42,
+    logger: Logger = None
 ):
     """
     Splits a dataset by case_id, copying the corresponding subfolders into
@@ -39,21 +41,42 @@ def split_by_case(
     train_df = df[df["case_id"].isin(train_cases)]
     val_df = df[df["case_id"].isin(val_cases)]
 
-    # 4) Remove existing CSVs if they exist
+    # # 4) Add new index column
+
+    # unique_case_ids = train_df['case_id'].unique()
+    # case_id_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_case_ids, start=0)}
+    # train_df['new_case_id'] = train_df['case_id'].map(case_id_mapping)
+    # train_df = train_df.rename(columns={'case_id': 'old_case_id'})
+    # train_df = train_df.rename(columns={'new_case_id': 'case_id'})
+
+    # unique_case_ids = val_df['case_id'].unique()
+    # case_id_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_case_ids, start=0)}
+    # val_df['new_case_id'] = val_df['case_id'].map(case_id_mapping)
+    # val_df = val_df.rename(columns={'case_id': 'old_case_id'})
+    # val_df = val_df.rename(columns={'new_case_id': 'case_id'})
+
+
+    # 5) Remove existing CSVs if they exist
     if os.path.exists(output_train_csv):
         os.remove(output_train_csv)
     
     if os.path.exists(output_val_csv):
         os.remove(output_val_csv)
 
-    # 5) Save them to CSV
+    # 6) Save them to CSV
     train_df.to_csv(output_train_csv, index=False)
     val_df.to_csv(output_val_csv, index=False)
 
-    print(f"Created {output_train_csv} with {train_df.shape[0]} rows.")
-    print(f"Created {output_val_csv} with {val_df.shape[0]} rows.")
+    if logger:
+        logger.info(f"Created {output_train_csv} with {train_df.shape[0]} rows.")
+        logger.info(f"Created {output_val_csv} with {val_df.shape[0]} rows.")
 
-    print("\nSplit complete. Your new train/val CSVs are ready.")
+        logger.info("\nSplit complete. Your new train/val CSVs are ready.")
+    else:
+        print(f"Created {output_train_csv} with {train_df.shape[0]} rows.")
+        print(f"Created {output_val_csv} with {val_df.shape[0]} rows.")
+
+        print("\nSplit complete. Your new train/val CSVs are ready.")
 
 if __name__ == "__main__":
     # Example usage:

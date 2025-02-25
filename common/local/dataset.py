@@ -13,16 +13,22 @@ class MammographyDataset(Dataset):
 		self.view = view
 		self.transform = transform
 
+		self.unique_case_ids = self.data['case_id'].unique()
+    	# self.case_id_mapping = {old_id : new_id for new_id, old_id in enumerate(unique_case_ids)}
+		
 	def __len__(self):
 		return len(self.data[(self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)])
 	
 
 	def __getitem__(self, idx):
-		row = self.data[(self.data["case_id"] == idx) & (self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)]
+		actual_idx = self.unique_case_ids[idx]
+		row = self.data[(self.data["case_id"] == actual_idx) & (self.data["laterality"] == self.laterality) & (self.data["view"] == self.view)]
+		if row.empty:
+			raise ValueError(f"Case ID {actual_idx} not found for laterality {self.laterality} and view {self.view}")
 		label = row["category"].values[0]
-		img_file = f'{row["image_id"].values[0]}.jpg'
+		img_file = f'{actual_idx}/{row["image_id"].values[0]}.jpg'
 		img_path = os.path.join(self.img_dir, img_file)
-		image = Image.open(img_path).convert("RGB")
+		image = Image.open(img_path)
         
 		if self.transform:
 			image = self.transform(image)
