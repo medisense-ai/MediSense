@@ -143,3 +143,4 @@ loc/lov_vir/*
 
 # Ignore model files
 *.pth
+*.pt

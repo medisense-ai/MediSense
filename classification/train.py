@@ -13,11 +13,11 @@ import pandas as pd
 from common.local.dataset import MammographyDataset
 from common.local.splitting import split_by_case
 from common.local.logger import Logger, log_cuda_memory
-from model_2 import MammoClassificationResNet50
-from ensemble_2 import WeightedEnsembleModel
+from classification.model_resnet import MammoClassificationResNet50
+from classification.ensemble_LR import WeightedEnsembleModel
 
 BATCH_SIZE = 32
-WORKERS = 0
+WORKERS = 4
 
 log = Logger(log_dir='/home/team11/dev/MediSense/classification/temp', log_file='ensemble2.log')
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -41,13 +41,10 @@ transform = transforms.Compose(
     ]
 )
 
-ensembles = {}
-dl_val = {}
 
 for laterality in ["L", "R"]:
     models = []
     dataloaders_train = []
-    dataloaders_val = []
 
     for view in ["CC", "MLO"]:
 
@@ -62,15 +59,6 @@ for laterality in ["L", "R"]:
         dataloader = DataLoader(ds, batch_size=BATCH_SIZE, num_workers=WORKERS, shuffle=False)
         dataloaders_train.append(dataloader)
 
-        ds = MammographyDataset(
-            csv_file="/home/team11/dev/MediSense/classification/temp/val_labels.csv",
-            img_dir="/home/data/train/images",
-            laterality=laterality,
-            view=view,
-            transform=transform,
-        )
-        dataloader = DataLoader(ds, batch_size=BATCH_SIZE, num_workers=WORKERS, shuffle=False)
-        dataloaders_val.append(dataloader)
 
         model = MammoClassificationResNet50(logger=log)
         models.append(model)
@@ -81,17 +69,9 @@ for laterality in ["L", "R"]:
     log.info(f"Training ensemble for {laterality}")
     ensemble.train_ensemble(dataloaders_train)
     ensemble.save_models(laterality, ["CC", "MLO"], "/home/team11/dev/MediSense/classification/t1")
-    ensembles[laterality] = ensemble
-    dl_val[laterality] = dataloaders_val
 
     log_cuda_memory(log)
     
-
-# 2) Evaluate the ensemble on the validation set
-log.info("Evaluating ensemble on validation set")
-for laterality in ["L", "R"]:
-    log.info(ensembles[laterality].evaluate_ensemble(dl_val[laterality]))
-
 log.info("Done")
 
 

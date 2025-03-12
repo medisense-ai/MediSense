@@ -102,96 +102,83 @@ class MammoClassificationDataset(Dataset):
 # DATASET ZA LOKALIZACIJU  #
 #############################
 
+import os
+import torch
+import pandas as pd
+import numpy as np
+from skimage import io, transform
+from pathlib import Path
+from torch.utils.data import Dataset
+from collections import defaultdict
+
 class MammoLocalizationDataset(Dataset):
-    """Mammo Localization dataset.
-    
-    This version loads data from localization.csv and merges it with class information
-    from classification.csv (using the "birads" column for class) based on case_id and image_id.
-    Additionally, if resizing is applied, bounding box coordinates are scaled accordingly.
-    """
     def __init__(self, data_dir=None, transform=None, resize_output_size=None):
-        """
-        Arguments:
-            data_dir (string): Directory with all the images and CSV files.
-            transform (callable, optional): Optional transform to be applied on a sample.
-            resize_output_size (tuple or int, optional): If provided, images will be resized.
-        """
         self.images_dir = Path(data_dir) / 'images'
-        
-        # Load localization CSV.
         self.localization_df = pd.read_csv(os.path.join(data_dir, 'localization.csv'))
-        # Load classification CSV.
-        classification_df = pd.read_csv(os.path.join(data_dir, 'classification.csv'))
         
-        # Merge based on case_id and image_id.
-        # Use "birads" from classification_df as the class indicator.
-        self.localization_df = self.localization_df.merge(
-            classification_df[['case_id', 'image_id', 'birads']],
-            on=['case_id', 'image_id'],
-            how='left'
-        )
-        
-        # Sort for consistency.
+        # Sort DataFrame by 'case_id' and 'image_id'
         self.localization_df.sort_values(by=['case_id', 'image_id'], inplace=True)
         
         self.transform = transform
-        self.resize_output_size = resize_output_size  # e.g., (512, 512)
-        self.images = {}
-        self.cases = []
+        self.resize_output_size = resize_output_size  
+        self.cases = defaultdict(list)  # Dictionary to store multiple annotations per image
         
-        # Create a list of image paths and annotations.
-        for idx in range(len(self.localization_df)):
-            case_id = self.localization_df.loc[idx, 'case_id']
-            image_id = self.localization_df.loc[idx, 'image_id']
+        for _, row in self.localization_df.iterrows():
+            case_id = row['case_id']
+            image_id = row['image_id']
             image_path = self.images_dir / f"{case_id}" / f"{image_id}.jpg"
-            self.cases.append((image_path, 
-                               self.localization_df.loc[idx, ['birads', 'xmin', 'ymin', 'xmax', 'ymax']]))
-        
+
+            if not image_path.exists():
+                print(f"Warning: Image {image_path} not found. Skipping.")
+                continue  # Skip missing images
+
+            # Store all annotations per image
+            ann = row[['category', 'xmin', 'ymin', 'xmax', 'ymax']].fillna(0).to_dict()
+            self.cases[(case_id, image_id, image_path)].append(ann)
+
+        # Convert dict keys to list to preserve order
+        self.image_keys = list(self.cases.keys())
+
     def __len__(self):
-        return len(self.localization_df)
+        return len(self.image_keys)
 
     def __getitem__(self, idx):
-        # Load image using skimage.io.imread.
-        image_path, annotation = self.cases[idx]
-        sample = io.imread(str(image_path))
+        case_id, image_id, image_path = self.image_keys[idx]
+        sample = io.imread(str(image_path))  # Load image
         
-        # Keep original dimensions for scaling bounding box coordinates.
+        # if sample.ndim == 2:  # Convert grayscale to 3 channels
+        #     sample = np.stack([sample] * 3, axis=-1)
+        
         orig_shape = sample.shape[:2]
-        
-        # If a resize is requested, resize the image and scale bounding box coordinates.
+        annotations = self.cases[(case_id, image_id, image_path)]
+
         if self.resize_output_size is not None:
-            # Resize the image.
-            sample = transform.resize(sample, self.resize_output_size)
-            # Determine new dimensions.
-            if isinstance(self.resize_output_size, int):
-                new_H, new_W = self.resize_output_size, self.resize_output_size
-            else:
-                new_H, new_W = self.resize_output_size
+            new_H, new_W = self.resize_output_size
             scale_y = new_H / orig_shape[0]
             scale_x = new_W / orig_shape[1]
-            # Scale bounding box coordinates.
-            scaled_annotation = {
-                'birads': annotation['birads'],
-                'xmin': annotation['xmin'] * scale_x if pd.notnull(annotation['xmin']) else annotation['xmin'],
-                'ymin': annotation['ymin'] * scale_y if pd.notnull(annotation['ymin']) else annotation['ymin'],
-                'xmax': annotation['xmax'] * scale_x if pd.notnull(annotation['xmax']) else annotation['xmax'],
-                'ymax': annotation['ymax'] * scale_y if pd.notnull(annotation['ymax']) else annotation['ymax']
-            }
+
+            sample = transform.resize(sample, self.resize_output_size)
+
+            # Scale all bounding boxes
+            scaled_annotations = []
+            for ann in annotations:
+                scaled_ann = {
+                    'category': ann['category'],
+                    'xmin': ann['xmin'] * scale_x,
+                    'ymin': ann['ymin'] * scale_y,
+                    'xmax': ann['xmax'] * scale_x,
+                    'ymax': ann['ymax'] * scale_y,
+                }
+                scaled_annotations.append(scaled_ann)
         else:
-            scaled_annotation = {
-                'birads': annotation['birads'],
-                'xmin': annotation['xmin'],
-                'ymin': annotation['ymin'],
-                'xmax': annotation['xmax'],
-                'ymax': annotation['ymax']
-            }
-        
+            scaled_annotations = annotations  # Keep original annotations
+
         if self.transform:
             sample = self.transform(sample)
-            
-        # Return a tuple: (case_id, sample, annotation)
-        case_id = os.path.basename(os.path.dirname(str(image_path)))
-        return case_id, sample, scaled_annotation
+
+        return case_id, sample, scaled_annotations
+
+
 
 #############################
 # DODATNE TRANSFORMACIJE   #

@@ -9,7 +9,7 @@ import torchvision.models
 from typing import Dict, List, Tuple, Union, Optional
 
 #######################################
-# Classification modeli (ostaju isti) #
+# Classification models (unchanged)   #
 #######################################
 
 class MammoBaseClassificationNet(nn.Module):
@@ -47,15 +47,15 @@ class MammoBaseClassificationNet(nn.Module):
         y = self.relu(self.fc3(y))
         y = self.fc4(y)
         return y
-    
-    
+
+
 class MammoClassificationResNet18(nn.Module):
     def __init__(self, categories=6, pretrained=False):
         super().__init__()
         self.conv1 = torch.nn.Conv2d(1, 3, stride=2, kernel_size=(5,5), padding=2)
-        if pretrained: 
+        if pretrained:
             weights = torchvision.models.ResNet18_Weights.DEFAULT
-        else: 
+        else:
             weights = None
         self.resnet18 = torchvision.models.resnet18(weights=weights)
         self.resnet18.fc = nn.Identity()
@@ -130,13 +130,11 @@ class RandomCategoryClassifier:
 
 
 ##########################################
-# NOVI SEGMENTACIJSKI MODEL ZA LOKALIZACIJU #
+# Single-label U-Net for segmentation    #
 ##########################################
 
-# Definicija osnovnih blokova za U-Net arhitekturu
-
 class DoubleConv(nn.Module):
-    """Dva uzastopna konvolucijska sloja s BatchNorm i ReLU aktivacijom."""
+    """Two consecutive convolutional layers with BatchNorm and ReLU."""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.double_conv = nn.Sequential(
@@ -151,7 +149,7 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 class Down(nn.Module):
-    """Downsampling (max pool) slijed konvolucije."""
+    """Downsampling with max pooling followed by DoubleConv."""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -162,7 +160,7 @@ class Down(nn.Module):
         return self.maxpool_conv(x)
 
 class Up(nn.Module):
-    """Upsampling i spajanje s odgovarajućim encoder značajkama."""
+    """Upsampling and concatenation with corresponding encoder features."""
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
         if bilinear:
@@ -172,7 +170,7 @@ class Up(nn.Module):
         self.conv = DoubleConv(in_channels, out_channels)
     def forward(self, x1, x2):
         x1 = self.up(x1)
-        # Poravnaj dimenzije ako se ne podudaraju
+        # Pad x1 to match x2 dimensions if needed
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
@@ -181,64 +179,78 @@ class Up(nn.Module):
         return self.conv(x)
 
 class OutConv(nn.Module):
-    """Završni konvolucijski sloj koji mapira na broj izlaznih kanala (klasa)."""
+    """Final convolution layer mapping to the number of classes."""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
     def forward(self, x):
         return self.conv(x)
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# (Assuming DoubleConv, Down, Up, OutConv are defined as in your original script)
+
 class MammoSegmentationUNet(nn.Module):
     """
-    Segmentacijski model za lokalizaciju lezija na rendgenskim slikama dojke.
-    Ovaj model koristi U-Net arhitekturu kako bi generirao piksel-po-piksel masku.
+    Modified U-Net for single-label (multi-class) segmentation of mammograms.
+    This version reduces the depth by removing the fourth downsampling block,
+    so the bottleneck operates at 1/8 resolution instead of 1/16. This can help
+    the network better capture very small lesions.
     
-    Ulaz: jednokanalna slika (npr. 1xHxW)
-    Izlaz: maska s 'n_classes' kanala, gdje se za svaki kanal primjenjuje sigmoid
-           (multi-label segmentation – piksel može pripadati više klasa).
+    - Input: single-channel image (B,1,H,W)
+    - Output: raw logits of shape (B,n_classes,H,W), with n_classes=7.
     """
-    def __init__(self, n_channels=1, n_classes=2, bilinear=True):
+    def __init__(self, n_channels=1, n_classes=7, bilinear=True):
         super().__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
 
-        self.inc = DoubleConv(n_channels, 64)
-        self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 512)
-        factor = 2 if bilinear else 1
-        self.down4 = Down(512, 1024 // factor)
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
+        # Encoder
+        self.inc = DoubleConv(n_channels, 64)      # Output: (B,64,H,W)
+        self.down1 = Down(64, 128)                 # (B,128,H/2,W/2)
+        self.down2 = Down(128, 256)                # (B,256,H/4,W/4)
+        self.down3 = Down(256, 512)                # (B,512,H/8,W/8)
+        
+        # Bottleneck (optional extra processing without further downsampling)
+        self.bottleneck = DoubleConv(512, 512)       # (B,512,H/8,W/8)
+
+        # Decoder
+        # Up block 1: combines bottleneck (512) with skip from down2 (256)
+        self.up1 = Up(512 + 256, 256, bilinear)
+        # Up block 2: combines up1 output (256) with skip from down1 (128)
+        self.up2 = Up(256 + 128, 128, bilinear)
+        # Up block 3: combines up2 output (128) with skip from inc (64)
+        self.up3 = Up(128 + 64, 64, bilinear)
         self.outc = OutConv(64, n_classes)
 
     def forward(self, x):
-        x1 = self.inc(x)      # (B, 64, H, W)
-        x2 = self.down1(x1)   # (B, 128, H/2, W/2)
-        x3 = self.down2(x2)   # (B, 256, H/4, W/4)
-        x4 = self.down3(x3)   # (B, 512, H/8, W/8)
-        x5 = self.down4(x4)   # (B, 1024, H/16, W/16)
-        x = self.up1(x5, x4)  # (B, 512, H/8, W/8)
-        x = self.up2(x, x3)   # (B, 256, H/4, W/4)
-        x = self.up3(x, x2)   # (B, 128, H/2, W/2)
-        x = self.up4(x, x1)   # (B, 64, H, W)
-        logits = self.outc(x) # (B, n_classes, H, W)
-        # Za multi-label segmentation koristimo sigmoid (ne softmax)
-        return torch.sigmoid(logits)
+        # Encoder
+        x1 = self.inc(x)      # (B,64,H,W)
+        x2 = self.down1(x1)   # (B,128,H/2,W/2)
+        x3 = self.down2(x2)   # (B,256,H/4,W/4)
+        x4 = self.down3(x3)   # (B,512,H/8,W/8)
+        x4 = self.bottleneck(x4)  # (B,512,H/8,W/8)
+
+        # Decoder: note that now we have only three skip connections
+        x = self.up1(x4, x3)  # (B,256,H/4,W/4)
+        x = self.up2(x, x2)   # (B,128,H/2,W/2)
+        x = self.up3(x, x1)   # (B,64,H,W)
+        logits = self.outc(x) # (B,n_classes,H,W)
+        return logits
 
 
 ##############################
-# MODEL MAPA I POMOĆNE FUNKCIJE #
+# Model map & helper functions
 ##############################
 
 MODEL_NAMES = [
     "mammo-cls-resnet18", 
     "mammo-cls-base", 
     "mammo-random",
-    "mammo-segmentation-unet"  # novi model za segmentaciju
+    "mammo-segmentation-unet"  # segmentation model
 ]
 
 MODEL_MAP = {
@@ -251,10 +263,10 @@ MODEL_MAP = {
 def get_model(model_name: str = MODEL_NAMES[0], categories: int = 6):
     """Get model by model name."""
     return MODEL_MAP[model_name]
-    
-    
+
+
 #############################################
-# Ostale klase (npr. RandomLocalization) ostaju #
+# RandomLocalization remains unchanged       #
 #############################################
 
 class RandomLocalization():
