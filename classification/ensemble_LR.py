@@ -95,7 +95,7 @@ def _calculate_weights_softmax(metrics_list):
     return weights.tolist()
 
 class WeightedEnsembleModel(nn.Module):
-    def __init__(self, models : dict, detection_weights : dict = None):
+    def __init__(self, models : nn.ModuleDict, detection_weights : dict = None):
         '''
         models: dictionary of models to ensemble, contains 'MLO' and 'CC' keys
         detection_weights: dictionary of ensemble weights for each model (not model weights)
@@ -106,7 +106,8 @@ class WeightedEnsembleModel(nn.Module):
         for k, model in models:
             model.to(device)
 
-        self.models_list= nn.ModuleList(models)
+        self.model_CC = models['CC']
+        self.model_MLO = models['MLO']
 
         num_models = len(self.models_list)
         if detection_weights is None:

@@ -140,6 +140,7 @@ cython_debug/
 # Ignore everything in loc/dataset
 loc/dataset/*
 loc/lov_vir/*
+loc/upute/runs/*
 
 # Ignore model files
 *.pth
