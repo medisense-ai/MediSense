@@ -141,6 +141,8 @@ cython_debug/
 loc/dataset/*
 loc/lov_vir/*
 loc/upute/runs/*
+loc/upute/processed_dataset/*
+loc/upute/localization_results/*
 
 # Ignore model files
 *.pth
