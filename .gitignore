@@ -137,13 +137,16 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# TEMPORARY CHANGES
 # Ignore everything in loc/dataset
 loc/dataset/*
 loc/lov_vir/*
-loc/upute/runs/*
-loc/upute/processed_dataset/*
-loc/upute/localization_results/*
+loc/upute/*
 
 # Ignore model files
 *.pth
 *.pt
+
+*.jpg
+*.jpeg
+*.png
