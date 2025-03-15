@@ -1,0 +1,5 @@
+train: /home/team11/dev/MediSense/loc/upute/processed_dataset/train/images
+val: /home/team11/dev/MediSense/loc/upute/processed_dataset/val/images
+test: /home/team11/dev/MediSense/loc/upute/processed_dataset/test/images
+nc: 6
+names: ["Mass", "Suspicious_Calcification", "Focal_Asymmetry", "Architectural_Distortion", "Suspicious_Lymph_Node", "Other"]

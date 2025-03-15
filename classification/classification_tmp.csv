@@ -1,0 +1,9 @@
+case_id,patient_id,study_id,image_id,laterality,view,device_id,breast_birads,birads,category
+0,0,1,0_L_CC,L,CC,7,0,0,0
+0,0,1,0_L_MLO,L,MLO,7,0,0,0
+0,0,1,0_R_CC,R,CC,7,3,0,0
+0,0,1,0_R_MLO,R,MLO,7,3,0,0
+1,1,1,1_L_CC,L,CC,3,1,1,1
+1,1,1,1_L_MLO,L,MLO,3,1,1,1
+1,1,1,1_R_CC,R,CC,3,1,1,1
+1,1,1,1_R_MLO,R,MLO,3,1,1,1
