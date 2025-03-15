@@ -95,58 +95,58 @@ def _calculate_weights_softmax(metrics_list):
     return weights.tolist()
 
 class WeightedEnsembleModel(nn.Module):
-    def __init__(self, models : nn.ModuleDict, detection_weights : dict = None):
+    def __init__(self, laterality : str, models : nn.ModuleDict, detection_weights : dict = None):
         '''
         models: dictionary of models to ensemble, contains 'MLO' and 'CC' keys
         detection_weights: dictionary of ensemble weights for each model (not model weights)
         '''
         super().__init__()
 
+        self.laterality = laterality
+
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        for k, model in models:
-            model.to(device)
 
-        self.model_CC = models['CC']
-        self.model_MLO = models['MLO']
+        self.models_dict = models
 
-        num_models = len(self.models_list)
         if detection_weights is None:
-            detection_weights = [1.0] * num_models
+            detection_weights = {'CC': 1.0, 'MLO': 1.0}
 
         self.detection_weights = detection_weights
-        self.model_metrics = []
+        self.model_metrics = {'CC': None, 'MLO': None}
 
-    def forward(self, x):
-        if len(x) != len(self.models_list):
-            raise ValueError("The number of inputs should match the number of models.")
+    def forward(self, x : dict):
+        if not x.get('CC') or not x.get('MLO'):
+            raise ValueError("The input should have 'CC' and 'MLO' keys.")
 
-        detect_outputs = []
-        for pic, model, w_det in zip(x, self.models_list, self.detection_weights):
-            detect = model(pic)
-            detect_outputs.append(detect * w_det)
-        sum_detect = torch.stack(detect_outputs, dim=0).sum(dim=0)
+        detect_outputs = {}
+
+        for i in ['CC', 'MLO']:
+            detect = self.models_dict[i](x[i])
+            detect_outputs[i] = detect * self.detection_weights[i]
+        
+        sum_detect = torch.stack(detect_outputs.values(), dim=0).sum(dim=0)
         avg_detect = sum_detect / sum(self.detection_weights)
         return avg_detect
 
 
-    def train_ensemble(self, dataloaders): #csv_file, img_dir):
+    def train_ensemble(self, dataloaders : dict, save_loc : str = "/home/team11/dev/MediSense/classification/t1/ensemble_weights.pkl"): #csv_file, img_dir):
         mccs = []
-        for i, md in enumerate(self.models_list):
-            md.train_model(dataloaders[i])
-            #torch.save(md.state_dict(), f"/home/team11/dev/MediSense/classification/t1/model_{laterality}_{view}.pth")
+        for view, md in self.models_dict.items():
+            md.train_model(dataloaders[view])
+            # torch.save(md.state_dict(), f"/home/team11/dev/MediSense/classification/t1/model_{self.laterality}_{view}.pth")
 
-            metrics = md.evaluate_model(dataloaders[i])
-            self.model_metrics.append(metrics)
+            metrics = md.evaluate_model(dataloaders[view])
+            self.model_metrics[view] = metrics
             mccs.append(metrics['mcc'])
         
         print(f"Metrics: {self.model_metrics}")
         self.detection_weights = _calculate_weights(mccs)
 
         # save weights
-        with open(f"/home/team11/dev/MediSense/classification/t1/ensemble_weights.pkl", 'wb') as f:
+        with open(save_loc, 'wb') as f:
             pickle.dump(self.detection_weights, f)
 
-    def evaluate_ensemble(self, dataloaders):
+    def evaluate_ensemble(self, dataloaders : dict):
         '''
         Evaluates following metrics of model: 
             precision, recall, F1 - per class
@@ -161,8 +161,8 @@ class WeightedEnsembleModel(nn.Module):
         
         preds = []
         labels = []
-        for mdl, dataloader in zip(self.models_list, dataloaders):
-            p, l = mdl.infer(dataloader)
+        for view, mdl in self.models_dict.items():
+            p, l = mdl.infer(dataloaders[view])
             preds.append(p)
             labels.append(l)
             
@@ -199,29 +199,28 @@ class WeightedEnsembleModel(nn.Module):
         return metric
 
             
-    def save_models(self, laterality, views, path):
-        for i, model in enumerate(self.models_list):
-            view = views[i]
-            torch.save(model.state_dict(), f"{path}/model_{laterality}_{view}.pth")
+    def save_models(self, path):
+        for view, model in self.models_dict.items():
+            torch.save(model.state_dict(), f"{path}/model_{self.laterality}_{view}.pth")
 
         # Pickle and save the ensemble weights
         with open(f"{path}/ensemble_weights.pkl", 'wb') as f:
             pickle.dump(self.detection_weights, f)
                              
 
-    def recalculate_weights(self, dataloaders=None, path=None):
-        if dataloaders:
-            mccs = []
-            for i, md in enumerate(self.models_list):
-                metrics = md.evaluate_model(dataloaders[i])
-                self.model_metrics.append(metrics)
-                mccs.append(metrics['mcc'])
+    # def recalculate_weights(self, dataloaders=None, path=None):
+    #     if dataloaders:
+    #         mccs = []
+    #         for i, md in enumerate(self.models_list):
+    #             metrics = md.evaluate_model(dataloaders[i])
+    #             self.model_metrics.append(metrics)
+    #             mccs.append(metrics['mcc'])
             
-            self.detection_weights = _calculate_weights(mccs)
-        elif path:
-            with open(f"{path}/ensemble_weights.pkl", 'rb') as f:
-                self.detection_weights = pickle.load(f)
-        else:
-            raise ValueError("Either dataloaders or path should be provided.")
+    #         self.detection_weights = _calculate_weights(mccs)
+    #     elif path:
+    #         with open(f"{path}/ensemble_weights.pkl", 'rb') as f:
+    #             self.detection_weights = pickle.load(f)
+    #     else:
+    #         raise ValueError("Either dataloaders or path should be provided.")
 
         
