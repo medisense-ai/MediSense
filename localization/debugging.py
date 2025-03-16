@@ -33,7 +33,7 @@ class ToTensorDouble:
 def collate_fn(batch):
     return tuple(zip(*batch))
 
-# Function to check bounding boxes for potential issues.
+# (Optional) Function to check bounding boxes for potential issues.
 def check_boxes(boxes, image_shape):
     warnings = []
     for box in boxes:
@@ -45,11 +45,11 @@ def check_boxes(boxes, image_shape):
     return warnings
 
 def main():
-    # Enable anomaly detection to help trace autograd errors.
+    # Enable anomaly detection to help track autograd errors.
     torch.autograd.set_detect_anomaly(True)
 
     # Set up logging and device.
-    log = Logger(log_dir='/home/team11/dev/MediSense/localization/debug_logs', log_file='debug_localization.log')
+    log = Logger(log_dir='/home/team11/dev/MediSense/localization/training_logs', log_file='training.log')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Training on device:", device)
     log.info(f"Training on device: {device}")
@@ -68,29 +68,20 @@ def main():
         transform=transform
     )
 
-    # -------------------------------
-    # Compute weights for oversampling positive examples
-    # -------------------------------
-    num_positive = 0
-    num_negative = 0
-
-    for i in range(len(train_dataset)):
-        _, target = train_dataset[i]
-        if target["boxes"].size(0) > 0:
-            num_positive += 1
-        else:
-            num_negative += 1
-
+    # Use known counts for positives and negatives (precomputed).
+    num_positive = 1411
+    num_negative = 14585
     log.info(f"Positive images: {num_positive}, Negative images: {num_negative}")
     print(f"Positive images: {num_positive}, Negative images: {num_negative}")
 
-    # Compute weight ratio for positive samples.
-    weight_ratio = (num_negative / num_positive) if num_positive > 0 else 1.0
+    # Compute weight ratio based on known counts.
+    weight_ratio = num_negative / num_positive
 
-    # Create a list of weights for each sample.
+    # Create a list of weights for each sample without recalculating positives/negatives.
     weights = []
     for i in range(len(train_dataset)):
         _, target = train_dataset[i]
+        # If the sample is positive (has at least one bounding box), assign the weight ratio.
         if target["boxes"].size(0) > 0:
             weights.append(weight_ratio)
         else:
@@ -98,7 +89,7 @@ def main():
 
     sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
-    # Create the DataLoader with the sampler (no shuffle because the sampler handles randomness).
+    # Create the DataLoader with the sampler (no shuffle needed because sampler handles randomness).
     train_loader = DataLoader(
         train_dataset,
         batch_size=1,
@@ -110,8 +101,8 @@ def main():
     # Create the localization model.
     model = MammoLocalizationResNet50(num_classes=7, pretrained=True, logger=log)
     model.model.to(device)
-    model.model.train()
 
+    # Set up the optimizer.
     optimizer = torch.optim.SGD(
         model.model.parameters(),
         lr=0.005,
@@ -119,72 +110,86 @@ def main():
         weight_decay=0.0005
     )
 
-    # Debug training: Process only a few batches for faster debugging.
-    max_batches = 5
-    batch_count = 0
+    # Set hyperparameters.
+    NUM_EPOCHS = 15
 
-    for images, targets in train_loader:
-        print(f"Processing batch {batch_count}")
-        log.info(f"Processing batch {batch_count}")
+    # Training loop.
+    for epoch in range(NUM_EPOCHS):
+        model.model.train()
+        epoch_loss = 0.0
+        log.info(f"Epoch {epoch+1}/{NUM_EPOCHS} starting...")
+        print(f"Epoch {epoch+1}/{NUM_EPOCHS} starting...")
 
-        # Check bounding boxes for each image in the batch.
-        for i, target in enumerate(targets):
-            boxes = target["boxes"]
-            print(f"Image {i} target boxes: {boxes}")
-            log.info(f"Image {i} target boxes: {boxes}")
-            # Get image dimensions (assuming tensor shape [C, H, W]).
-            image_tensor = images[i]
-            image_shape = image_tensor.shape[1:]  # (height, width)
-            warnings = check_boxes(boxes.numpy(), image_shape)
-            for warning in warnings:
-                print("Warning:", warning)
-                log.warning(warning)
+        for batch_idx, (images, targets) in enumerate(train_loader):
+            # (Optional) Check bounding boxes for each image.
+            for i, target in enumerate(targets):
+                boxes = target["boxes"]
+                print(f"Epoch {epoch+1}, Batch {batch_idx}, Image {i} target boxes: {boxes}")
+                log.info(f"Epoch {epoch+1}, Batch {batch_idx}, Image {i} target boxes: {boxes}")
+                image_tensor = images[i]
+                image_shape = image_tensor.shape[1:]  # (height, width)
+                warnings = check_boxes(boxes.numpy(), image_shape)
+                for warning in warnings:
+                    print("Warning:", warning)
+                    log.warning(warning)
 
-        # Move images and targets to the device.
-        images = [img.to(device) for img in images]
-        new_targets = []
-        for t in targets:
-            if isinstance(t, dict):
-                new_targets.append({k: v.to(device) for k, v in t.items()})
-            else:
-                new_targets.append({
-                    "boxes": torch.empty((0, 4), dtype=torch.float32).to(device),
-                    "labels": torch.empty((0,), dtype=torch.int64).to(device)
-                })
+            # Move images and targets to the device.
+            images = [img.to(device) for img in images]
+            new_targets = []
+            for t in targets:
+                if isinstance(t, dict):
+                    new_targets.append({k: v.to(device) for k, v in t.items()})
+                else:
+                    new_targets.append({
+                        "boxes": torch.empty((0, 4), dtype=torch.float32).to(device),
+                        "labels": torch.empty((0,), dtype=torch.int64).to(device)
+                    })
 
-        optimizer.zero_grad()
-        try:
-            loss_dict = model.model(images, new_targets)
-            print("Loss dictionary keys:", loss_dict.keys())
-            log.info(f"Loss dictionary keys: {loss_dict.keys()}")
-            total_loss = 0.0
-            for key, loss_value in loss_dict.items():
-                loss_item = loss_value.item()
-                print(f"Loss component {key}: {loss_item}")
-                log.info(f"Loss component {key}: {loss_item}")
-                if torch.isnan(loss_value):
-                    log.error(f"Loss component {key} is NaN")
-                total_loss += loss_value
+            optimizer.zero_grad()
+            try:
+                loss_dict = model.model(images, new_targets)
+                total_loss = 0.0
+                for key, loss_value in loss_dict.items():
+                    loss_item = loss_value.item()
+                    print(f"Epoch {epoch+1}, Batch {batch_idx}, Loss component {key}: {loss_item}")
+                    log.info(f"Epoch {epoch+1}, Batch {batch_idx}, Loss component {key}: {loss_item}")
+                    total_loss += loss_value
 
-            print("Total loss:", total_loss.item())
-            log.info(f"Total loss: {total_loss.item()}")
+                print(f"Epoch {epoch+1}, Batch {batch_idx}, Total loss: {total_loss.item()}")
+                log.info(f"Epoch {epoch+1}, Batch {batch_idx}, Total loss: {total_loss.item()}")
 
-            if torch.isnan(total_loss):
-                log.error("Total loss is NaN. Skipping backward pass for this batch.")
-                continue
+                if torch.isnan(total_loss):
+                    log.error("Total loss is NaN. Skipping backward pass for this batch.")
+                    continue
 
-            total_loss.backward()
-            optimizer.step()
+                total_loss.backward()
+                optimizer.step()
+                epoch_loss += total_loss.item()
 
-        except Exception as e:
-            print("Exception during forward/backward pass:", e)
-            log.error(f"Exception during forward/backward pass: {e}")
+            except Exception as e:
+                print("Exception during forward/backward pass:", e)
+                log.error(f"Exception during forward/backward pass: {e}")
 
-        batch_count += 1
-        if batch_count >= max_batches:
-            break
+        avg_loss = epoch_loss / len(train_loader)
+        log.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Average Loss: {avg_loss:.4f}")
+        print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Average Loss: {avg_loss:.4f}")
 
-    # Quick inference: run one batch to inspect predicted boxes.
+        # (Optional) Evaluate IoU on the training set if the model provides that functionality.
+        iou_metrics = model.evaluate_model_iou(train_loader)
+        mean_iou = iou_metrics.get("mean_iou", 0.0)
+        log.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Mean IoU: {mean_iou:.4f}")
+        print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Mean IoU: {mean_iou:.4f}")
+
+    log.info("Training complete")
+    print("Training complete")
+
+    # Save the trained model.
+    model_path = "/home/team11/dev/MediSense/localization/models/localization_model.pth"
+    torch.save(model.model.state_dict(), model_path)
+    log.info(f"Saved model to {model_path}")
+    print(f"Saved model to {model_path}")
+
+    # Optional: Quick inference on one batch to inspect predicted boxes.
     model.model.eval()
     with torch.no_grad():
         for images, targets in train_loader:
@@ -198,7 +203,7 @@ def main():
 
     # Optionally log CUDA memory usage.
     log_cuda_memory(log)
-    print("Debugging script complete.")
+    print("Training script complete.")
 
 if __name__ == "__main__":
     main()
