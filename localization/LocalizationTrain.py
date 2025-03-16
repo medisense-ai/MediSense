@@ -35,7 +35,7 @@ def collate_fn(batch):
 BATCH_SIZE = 1     # Detection → smaller batch sizes.
 WORKERS = 4
 NUM_EPOCHS = 15
-LR = 0.005
+LR = 0.001       # Lower learning rate to help stabilize training
 
 # Set up logging and device.
 log = Logger(log_dir='/home/team11/dev/MediSense/localization/temp', log_file='localization.log')
@@ -66,6 +66,11 @@ num_negative = 0
 # Loop over the dataset to count positive and negative images.
 for i in range(len(train_dataset)):
     _, target = train_dataset[i]
+    # If the annotation indicates no lesion, ensure boxes/labels are empty.
+    if isinstance(target, dict) and "finding" in target:
+        if target["finding"] in ["No_finding", "No_finiding"]:
+            target["boxes"] = torch.empty((0, 4), dtype=torch.float32)
+            target["labels"] = torch.empty((0,), dtype=torch.int64)
     if target["boxes"].size(0) > 0:
         num_positive += 1
     else:
@@ -81,6 +86,11 @@ weight_ratio = (num_negative / num_positive) if num_positive > 0 else 1.0
 weights = []
 for i in range(len(train_dataset)):
     _, target = train_dataset[i]
+    # Check again for the 'finding' flag in case it wasn't handled inside the dataset.
+    if isinstance(target, dict) and "finding" in target:
+        if target["finding"] in ["No_finding", "No_finiding"]:
+            target["boxes"] = torch.empty((0, 4), dtype=torch.float32)
+            target["labels"] = torch.empty((0,), dtype=torch.int64)
     if target["boxes"].size(0) > 0:
         weights.append(weight_ratio)
     else:
@@ -118,11 +128,19 @@ for epoch in range(NUM_EPOCHS):
     print(f"Epoch {epoch+1}/{NUM_EPOCHS} starting...")
 
     for images, targets in train_loader:
+        # Move images to the device.
         images = [img.to(device) for img in images]
         new_targets = []
         for t in targets:
             if isinstance(t, dict):
-                new_targets.append({k: v.to(device) for k, v in t.items()})
+                # Check for the 'finding' flag and override boxes/labels if no lesion.
+                if "finding" in t and t["finding"] in ["No_finding", "No_finiding"]:
+                    new_targets.append({
+                        "boxes": torch.empty((0, 4), dtype=torch.float32).to(device),
+                        "labels": torch.empty((0,), dtype=torch.int64).to(device)
+                    })
+                else:
+                    new_targets.append({k: v.to(device) for k, v in t.items()})
             else:
                 new_targets.append({
                     "boxes": torch.empty((0, 4), dtype=torch.float32).to(device),
