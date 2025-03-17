@@ -54,7 +54,7 @@ def main():
     print("Training on device:", device)
     log.info(f"Training on device: {device}")
 
-    # Define the transform pipeline.
+    # Define the transform pipeline.s
     transform = ComposeDouble([
         ResizeWithBBoxes((1024, 1024)),
         ToTensorDouble(),
@@ -63,14 +63,16 @@ def main():
 
     # Create the dataset.
     train_dataset = MammographyLocalizationDataset(
-        csv_file="/home/team11/data/train/localization.csv",
-        img_dir="/home/data/train/images",
+        #csv_file="/home/team11/data/train/localization.csv",
+        csv_file="/home/team11/dev/MediSense/loc/upute/test/localization.csv",
+        #img_dir="/home/data/train/images",
+        img_dir="/home/team11/dev/MediSense/loc/upute/test/",
         transform=transform
     )
 
     # Use known counts for positives and negatives (precomputed).
-    num_positive = 1411
-    num_negative = 14585
+    num_positive = 4
+    num_negative = 68
     log.info(f"Positive images: {num_positive}, Negative images: {num_negative}")
     print(f"Positive images: {num_positive}, Negative images: {num_negative}")
 
