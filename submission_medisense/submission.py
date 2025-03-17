@@ -212,23 +212,119 @@ if __name__ == "__main__":
     # ****************************************************************************
     # !------------- Task 2 localization problem -------------!
     # ****************************************************************************
-    dataset = datasets.MammoLocalizationDataset(data_dir=str(TEST_DATA_DIR))
-    df = pd.read_csv(os.path.join(TRAIN_DATA_DIR, "localization.csv"))
-    model_localization = models.RandomLocalization(df)
+    import pandas as pd
+    import numpy as np
+    import cv2
+    import torch
+    from torch.utils.data import DataLoader
+    from torchvision import transforms
+    # Import your custom classes from your localization code.
+    from LocalizationModel import MammoLocalizationResNet50
+    from LocalizationDataset import MammographyLocalizationDataset, ResizeWithBBoxes, NormalizeImageNet
+
+    # Define helper transforms (same as in your BestThreshold.py)
+    class ComposeDouble:
+        def __init__(self, transforms_list):
+            self.transforms = transforms_list
+
+        def __call__(self, image, target):
+            for t in self.transforms:
+                image, target = t(image, target)
+            return image, target
+
+    class ToTensorDouble:
+        def __call__(self, image, target):
+            image = transforms.ToTensor()(image)
+            return image, target
+
+    # -------- Load best threshold value --------
+    # You can either hardcode this value or load it from a file (e.g., best_threshold.txt).
+    # For example:
+    best_threshold = 0.5  # Replace with your computed best threshold or load it from file:
+    # with open("best_threshold.txt", "r") as f:
+    #     best_threshold = float(f.read().strip())
+
+    # -------- Prepare test dataset for localization --------
+    # Here we assume that the test CSV is located in TEST_DATA_DIR and images are in a subfolder "images"
+    transform_localization = ComposeDouble([
+        ResizeWithBBoxes((1024, 1024)),
+        ToTensorDouble(),
+        NormalizeImageNet(),
+    ])
+    test_dataset = MammographyLocalizationDataset(
+        csv_file=os.path.join(TEST_DATA_DIR, "localization.csv"),
+        img_dir=os.path.join(TEST_DATA_DIR, "images"),
+        transform=transform_localization
+    )
+
+    # Define a simple collate function (as in your training script)
+    def collate_fn(batch):
+        return tuple(zip(*batch))
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
+
+    # -------- Load the trained localization model --------
+    model_localization = MammoLocalizationResNet50(num_classes=7, pretrained=False)
+    localization_model_path = "/home/team11/dev/MediSense/localization/models/localization_model.pth"  # Update with the correct path
+    model_localization.load_model(localization_model_path)
+    model_localization.model.to(device)
+    model_localization.model.eval()
+
+    # -------- Run inference to get detection outputs --------
+    detections, _ = model_localization.infer(test_loader)
+    
+    # -------- Get image info (dimensions and identifiers) --------
+    # We use the CSV from the test directory and augment it with image dimensions using your utils function.
     dfl = pd.read_csv(os.path.join(TEST_DATA_DIR, "localization.csv"))
-    # print(dfl.shape)
-    # ---- You can store some intermediate results ----!
-    if os.path.isfile(os.path.join(args.output_dir, "results_with_image_info.csv")):
-        dfl = pd.read_csv(os.path.join(args.output_dir, "results_with_image_info.csv"))
-        print("Resuming from previous progress!")
-    else:
-        dfl = utils.get_images_dim_and_contour(dfl, dataset)
-        dfl.to_csv(
-            os.path.join(args.output_dir, "results_with_image_info.csv"), index=False
-        )
+    dfl = utils.get_images_dim_and_contour(dfl, test_dataset)
+    dfl.to_csv(os.path.join(args.output_dir, "results_with_image_info.csv"), index=False)
+
+    # -------- Build a results dataframe from detection outputs --------
+    # Here we create one row per image. If no detection meets the best threshold, we mark it as "No_Finding".
+    results = []
+    # Create an inverse mapping for category labels.
+    inv_category_map = {1: "Mass", 2: "Suspicious_Calcification", 3: "Focal_Asymmetry",
+                          4: "Architectural_Distortion", 5: "Suspicious_Lymph_Node", 6: "Other"}
+    # Iterate over test images (assumes same order as in dfl)
+    for i, ((image, target), detection) in enumerate(zip(test_dataset, detections)):
+        info = dfl.iloc[i]
+        case_id = info["case_id"]
+        image_id = info["image_id"]
+        height = info["height"]
+        width = info["width"]
+
+        boxes = detection["boxes"]
+        scores = detection["scores"]
+        labels = detection["labels"]
+
+        # Filter detections by best_threshold
+        keep = scores >= best_threshold
+        if keep.sum() > 0:
+            # Choose the detection with the highest score among those above threshold.
+            filtered_indices = keep.nonzero(as_tuple=True)[0]
+            best_idx = filtered_indices[torch.argmax(scores[keep])]
+            pred_box = boxes[best_idx].cpu().numpy()
+            pred_label = labels[best_idx].item()
+            pred_category = inv_category_map.get(pred_label, "No_Finding")
+        else:
+            pred_box = None
+            pred_category = "No_Finding"
+
+        results.append({
+            "case_id": case_id,
+            "image_id": image_id,
+            "height": height,
+            "width": width,
+            "category": pred_category,
+            "xmin": pred_box[0] if pred_box is not None else np.nan,
+            "ymin": pred_box[1] if pred_box is not None else np.nan,
+            "xmax": pred_box[2] if pred_box is not None else np.nan,
+            "ymax": pred_box[3] if pred_box is not None else np.nan,
+        })
+    results_df = pd.DataFrame(results)
 
     # !---- Output of task 2 segmentation problem and multi-label----!
-    results_df = model_localization.predict(dfl)
+    # The following code block (with all Mandatory comments) remains unchanged.
+    results_df = results_df  # (using our results_df from above)
     for i, row in results_df.iterrows():
         # !------------------ The expected file system structure is as: -------------------!# Mandatory
         per_image_id_output_dirs = (
@@ -250,14 +346,11 @@ if __name__ == "__main__":
                 )  # Mandatory
         # Heuristically generated localizations --> segmentation maps
         if row["category"] != "No_Finding":
-            xmin, ymin = utils.get_xmin_ymin(row)
-            area = model_localization.average_area_dict[
-                row["category"]
-            ] * random.uniform(0.8, 1.2)
-
-            side_length = int(area**0.5)
-            width, height = row["width"], row["height"]
-            mask = np.zeros((height, width), dtype=np.uint8)
+            # Use the predicted bounding box information
+            xmin, ymin = row["xmin"], row["ymin"]
+            # Here we use the box size from the detection; you could also use a fixed or computed area.
+            side_length = int(((row["xmax"] - row["xmin"]) * (row["ymax"] - row["ymin"])) ** 0.5)
+            mask = np.zeros((row["height"], row["width"]), dtype=np.uint8)
             xmax, ymax = xmin + side_length, ymin + side_length
             mask[int(ymin) : int(ymax), int(xmin) : int(xmax)] = 1
             # !---------------- Save all category masks in .png format even zeros ---------------!                                                                  # Mandatory
