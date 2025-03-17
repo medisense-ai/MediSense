@@ -1,4 +1,4 @@
-"""Script to generate submission file.
+a"""Script to generate submission file.
 
 File structure, existing in evaluation environment:
     -data/
