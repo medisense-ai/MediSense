@@ -34,7 +34,11 @@ def collate_fn(batch):
 # Hyperparameters
 BATCH_SIZE = 1     # Detection → smaller batch sizes.
 WORKERS = 4
+<<<<<<< HEAD
 NUM_EPOCHS = 4
+=======
+NUM_EPOCHS = 15
+>>>>>>> 18568cf31e60d0924d58b06b2fc18f8edd666efc
 LR = 0.001       # Lower learning rate to help stabilize training
 
 # Set up logging and device.
@@ -66,6 +70,7 @@ num_positive = 1411
 num_negative = 14585
 
 # Loop over the dataset to count positive and negative images.
+<<<<<<< HEAD
 #for i in range(len(train_dataset)):
 #    _, target = train_dataset[i]
     # If the annotation indicates no lesion, ensure boxes/labels are empty.
@@ -77,6 +82,19 @@ num_negative = 14585
    #     num_positive += 1
   #  else:
    #     num_negative += 1
+=======
+for i in range(len(train_dataset)):
+    _, target = train_dataset[i]
+    # If the annotation indicates no lesion, ensure boxes/labels are empty.
+    if isinstance(target, dict) and "finding" in target:
+        if target["finding"] in ["No_finding", "No_finiding"]:
+            target["boxes"] = torch.empty((0, 4), dtype=torch.float32)
+            target["labels"] = torch.empty((0,), dtype=torch.int64)
+    if target["boxes"].size(0) > 0:
+        num_positive += 1
+    else:
+        num_negative += 1
+>>>>>>> 18568cf31e60d0924d58b06b2fc18f8edd666efc
 
 log.info(f"Positive images: {num_positive}, Negative images: {num_negative}")
 print(f"Positive images: {num_positive}, Negative images: {num_negative}")
